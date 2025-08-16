@@ -1,0 +1,15 @@
+# Python venv
+.env/
+
+# Snapshots and logs
+snapshots/
+snapshots/*.bin
+snapshots/*.txt
+logs/
+*.log
+
+# Vendor sources (if we fallback to Codeberg clone)
+vendor/
+
+# macOS artifacts
+.DS_Store
