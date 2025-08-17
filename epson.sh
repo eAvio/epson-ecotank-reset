@@ -7,7 +7,8 @@ usage() {
 Epson EcoTank Waste Counter Utility
 
 Usage:
-  $0 status                # Inspect devices, log status, snapshot
+  $0 status [--show-ambiguous] [--csv[=PATH]]
+                          # Inspect devices, log status, optional ambiguous group, CSV snapshot
   $0 reset [--auto]        # Reset waste counters (auto-detected addresses)
   $0 reset --addresses A   # Reset with comma-separated hex addresses
   $0 reset --auto --yes    # Reset without confirmation
@@ -15,6 +16,9 @@ Usage:
 
 Examples:
   $0 status
+  $0 status --show-ambiguous
+  $0 status --csv                      # writes snapshots/COUNTERS_<stamp>.csv
+  $0 status --csv=snapshots/my.csv     # custom path
   $0 reset --auto
   $0 reset --addresses 0x2f,0x30,0x31 --yes
 EOF

@@ -66,23 +66,125 @@ run_reset() {
 
   log "Resetting waste counters for addresses: $addrs"
 
-  # Try a few CLI variants; primary is --reset
-  local tried=()
+  # Use Python API directly (CLI flags are not available in this build)
   local ok=0
-  local cmds=(
-    "$VENV_DIR/bin/python3 -m reinkpy.epson -v --reset $addrs"
-    "$VENV_DIR/bin/python3 -m reinkpy.epson --reset $addrs"
-    "$VENV_DIR/bin/python3 -m reinkpy.epson --reset-waste $addrs"
-  )
-  for c in "${cmds[@]}"; do
-    log "Attempt: $c" | tee -a "$reset_log" >/dev/null
-    if bash -c "$c" | tee -a "$reset_log"; then
+  log "Attempt: Python API reset (addresses: ${addrs:-auto/spec})" | tee -a "$reset_log" >/dev/null
+  if "$VENV_DIR/bin/python3" - "$addrs" <<'PY' | tee -a "$reset_log"; then
+import sys, logging
+for name in ('reinkpy', 'reinkpy.usb', 'reinkpy.d4'):
+    try:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    except Exception:
+        pass
+from reinkpy import UsbDevice
+
+addrs_str = sys.argv[1] if len(sys.argv) > 1 else ''
+devices = list(UsbDevice.ifind())
+if not devices:
+    print(' - No USB device found')
+    sys.exit(1)
+dev = devices[0]
+if len(devices) > 1:
+    print(' - Multiple USB devices found:')
+    for i, dv in enumerate(devices, start=1):
+        print(f"     [{i}] {dv}")
+    try:
+        choice = input(f"   Select device [1-{len(devices)}]: ").strip()
+        idx = int(choice) - 1
+        if 0 <= idx < len(devices):
+            dev = devices[idx]
+    except Exception:
+        pass
+    print(f" - Using: {dev}")
+e = dev.epson
+try:
+    e.configure(True)  # load spec for detected model
+except Exception:
+    pass
+
+ok = False
+if addrs_str:
+    # manual addresses: set to 0 by default
+    try:
+        addrs = [int(x, 16) for x in addrs_str.split(',') if x]
+        pairs = [(a, 0) for a in addrs]
+        ok = bool(e.write_eeprom(*pairs, atomic=True))
+    except Exception as ex:
+        print(f'ERROR: write_eeprom failed: {ex}')
+        ok = False
+else:
+    # auto/spec-based full waste reset
+    try:
+        res = e.reset_waste()
+        ok = bool(res)
+    except Exception as ex:
+        print(f'ERROR: reset_waste failed: {ex}')
+        ok = False
+
+print('RESULT:', 'OK' if ok else 'FAIL')
+sys.exit(0 if ok else 1)
+PY
+    ok=1
+  else
+    log "Primary attempt failed. Retrying with sudo..." | tee -a "$reset_log" >/dev/null
+    if sudo "$VENV_DIR/bin/python3" - "$addrs" <<'PY' | tee -a "$reset_log"; then
+import sys, logging
+for name in ('reinkpy', 'reinkpy.usb', 'reinkpy.d4'):
+    try:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    except Exception:
+        pass
+from reinkpy import UsbDevice
+
+addrs_str = sys.argv[1] if len(sys.argv) > 1 else ''
+devices = list(UsbDevice.ifind())
+if not devices:
+    print(' - No USB device found')
+    sys.exit(1)
+dev = devices[0]
+if len(devices) > 1:
+    print(' - Multiple USB devices found:')
+    for i, dv in enumerate(devices, start=1):
+        print(f"     [{i}] {dv}")
+    try:
+        choice = input(f"   Select device [1-{len(devices)}]: ").strip()
+        idx = int(choice) - 1
+        if 0 <= idx < len(devices):
+            dev = devices[idx]
+    except Exception:
+        pass
+    print(f" - Using: {dev}")
+e = dev.epson
+try:
+    e.configure(True)  # load spec for detected model
+except Exception:
+    pass
+
+ok = False
+if addrs_str:
+    # manual addresses: set to 0 by default
+    try:
+        addrs = [int(x, 16) for x in addrs_str.split(',') if x]
+        pairs = [(a, 0) for a in addrs]
+        ok = bool(e.write_eeprom(*pairs, atomic=True))
+    except Exception as ex:
+        print(f'ERROR: write_eeprom failed: {ex}')
+        ok = False
+else:
+    # auto/spec-based full waste reset
+    try:
+        res = e.reset_waste()
+        ok = bool(res)
+    except Exception as ex:
+        print(f'ERROR: reset_waste failed: {ex}')
+        ok = False
+
+print('RESULT:', 'OK' if ok else 'FAIL')
+sys.exit(0 if ok else 1)
+PY
       ok=1
-      break
-    else
-      tried+=("$c")
     fi
-  done
+  fi
 
   if [[ "$ok" -ne 1 ]]; then
     log "Reset command failed. See $reset_log for details."
@@ -141,19 +243,24 @@ main() {
       "$SCRIPT_DIR/epson_status.sh" || true
       latest="$(latest_status_log)"
     fi
-    addrs="$(extract_addresses_from_log "$latest")"
-    if [[ -z "$addrs" ]]; then
+    local extracted
+    extracted="$(extract_addresses_from_log "$latest")"
+    if [[ -z "$extracted" ]]; then
       log "Could not auto-detect waste counter addresses."
       log "Guidance: run '$SCRIPT_DIR/epson_status.sh' and inspect the log for waste/pad counters, then rerun with --addresses 0x..,0x.."
       exit 2
     fi
-    if ! validate_addresses "$addrs"; then
-      log "Auto-detected addresses appear malformed: $addrs"
-      exit 2
-    fi
+    # Prefer model spec-based reset via Python API over raw addresses
+    log "Auto-detected candidates: $extracted"
+    log "Proceeding with model spec-based reset (safer)"
+    addrs=""
   fi
 
-  echo "Will reset waste counters at addresses: $addrs"
+  if [[ -n "$addrs" ]]; then
+    echo "Will reset waste counters at addresses: $addrs"
+  else
+    echo "Will reset waste counters using model spec (auto)"
+  fi
   if [[ "$assume_yes" -ne 1 ]]; then
     if ! confirm "Proceed?"; then
       log "Aborted by user."
