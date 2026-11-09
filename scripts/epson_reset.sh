@@ -73,7 +73,7 @@ run_reset() {
 import sys, logging
 for name in ('reinkpy', 'reinkpy.usb', 'reinkpy.d4'):
     try:
-        logging.getLogger(name).setLevel(logging.WARNING)
+        logging.getLogger(name).setLevel(logging.CRITICAL)
     except Exception:
         pass
 from reinkpy import UsbDevice
@@ -83,20 +83,45 @@ devices = list(UsbDevice.ifind())
 if not devices:
     print(' - No USB device found')
     sys.exit(1)
-dev = devices[0]
-if len(devices) > 1:
-    print(' - Multiple USB devices found:')
-    for i, dv in enumerate(devices, start=1):
-        print(f"     [{i}] {dv}")
-    try:
-        choice = input(f"   Select device [1-{len(devices)}]: ").strip()
-        idx = int(choice) - 1
-        if 0 <= idx < len(devices):
-            dev = devices[idx]
-    except Exception:
-        pass
-    print(f" - Using: {dev}")
-e = dev.epson
+
+def select_epson_device(devices):
+    candidates = []
+    ordered = sorted(devices, key=lambda dev: 0 if '@usb:' in str(dev).lower() else 1)
+    for dev in ordered:
+        try:
+            eps = dev.epson
+            model = getattr(eps, 'detected_model', None)
+        except Exception:
+            continue
+        if model:
+            candidates.append((dev, eps, model))
+
+    if candidates:
+        if len(candidates) == 1:
+            dev, eps, _ = candidates[0]
+            print(f" - Using: {dev}")
+            return dev, eps
+        print(' - Multiple Epson devices found:')
+        for i, (dev, _, model) in enumerate(candidates, start=1):
+            print(f"     [{i}] {model}: {dev}")
+        try:
+            choice = input(f"   Select device [1-{len(candidates)}]: ").strip()
+            idx = int(choice) - 1
+            if 0 <= idx < len(candidates):
+                dev, eps, _ = candidates[idx]
+                print(f" - Using: {dev}")
+                return dev, eps
+        except Exception:
+            pass
+        dev, eps, _ = candidates[0]
+        print(f" - Using: {dev}")
+        return dev, eps
+
+    dev = devices[0]
+    print(f" - No detected Epson model; using first backend device: {dev}")
+    return dev, dev.epson
+
+dev, e = select_epson_device(devices)
 try:
     e.configure(True)  # load spec for detected model
 except Exception:
@@ -131,7 +156,7 @@ PY
 import sys, logging
 for name in ('reinkpy', 'reinkpy.usb', 'reinkpy.d4'):
     try:
-        logging.getLogger(name).setLevel(logging.WARNING)
+        logging.getLogger(name).setLevel(logging.CRITICAL)
     except Exception:
         pass
 from reinkpy import UsbDevice
@@ -141,20 +166,45 @@ devices = list(UsbDevice.ifind())
 if not devices:
     print(' - No USB device found')
     sys.exit(1)
-dev = devices[0]
-if len(devices) > 1:
-    print(' - Multiple USB devices found:')
-    for i, dv in enumerate(devices, start=1):
-        print(f"     [{i}] {dv}")
-    try:
-        choice = input(f"   Select device [1-{len(devices)}]: ").strip()
-        idx = int(choice) - 1
-        if 0 <= idx < len(devices):
-            dev = devices[idx]
-    except Exception:
-        pass
-    print(f" - Using: {dev}")
-e = dev.epson
+
+def select_epson_device(devices):
+    candidates = []
+    ordered = sorted(devices, key=lambda dev: 0 if '@usb:' in str(dev).lower() else 1)
+    for dev in ordered:
+        try:
+            eps = dev.epson
+            model = getattr(eps, 'detected_model', None)
+        except Exception:
+            continue
+        if model:
+            candidates.append((dev, eps, model))
+
+    if candidates:
+        if len(candidates) == 1:
+            dev, eps, _ = candidates[0]
+            print(f" - Using: {dev}")
+            return dev, eps
+        print(' - Multiple Epson devices found:')
+        for i, (dev, _, model) in enumerate(candidates, start=1):
+            print(f"     [{i}] {model}: {dev}")
+        try:
+            choice = input(f"   Select device [1-{len(candidates)}]: ").strip()
+            idx = int(choice) - 1
+            if 0 <= idx < len(candidates):
+                dev, eps, _ = candidates[idx]
+                print(f" - Using: {dev}")
+                return dev, eps
+        except Exception:
+            pass
+        dev, eps, _ = candidates[0]
+        print(f" - Using: {dev}")
+        return dev, eps
+
+    dev = devices[0]
+    print(f" - No detected Epson model; using first backend device: {dev}")
+    return dev, dev.epson
+
+dev, e = select_epson_device(devices)
 try:
     e.configure(True)  # load spec for detected model
 except Exception:
