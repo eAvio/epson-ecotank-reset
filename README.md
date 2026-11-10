@@ -39,10 +39,13 @@ and ensure your pads are not physically saturated.
   ./epson.sh reset --addresses 0x2f,0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37 --yes
   ```
 
+[docs/scripts.md](docs/scripts.md) describes what `status` and `reset` do step by step, every option, the files
+they write, exit codes and known limitations.
+
 Notes:
 - macOS: USB access for status/reset typically REQUIRES sudo. The tool auto-retries with sudo on permission errors and hides low-level tracebacks. You can also run directly with `sudo ./epson.sh status` or `sudo ./epson.sh reset ...` to avoid prompts.
 - Quiet by default: INFO logs from reinkpy are suppressed; user-facing output is concise. Use `logs/` for detailed diagnostics.
-- Multiple devices: if more than one Epson USB device is found, you'll be prompted to select which one.
+- Device selection: the scripts use the USB interface of a printer that reports an Epson model. They skip reinkpy's `/dev/lp?` and `/dev/usb/lp?` file devices, which on Linux are listed first and often have no printer behind them. If several Epson printers are connected, the first one listed is used, because the selection prompt cannot read input yet. Connect only the printer you want to reset. See [docs/scripts.md](docs/scripts.md#device-selection).
 - Logs live in `logs/` and snapshots in `snapshots/`.
 - If CSV is written while the script elevates to sudo, the CSV file may be owned by root. You can fix ownership with:
   ```bash
@@ -66,7 +69,7 @@ Notes:
 - Optional display of ambiguous "Waste counters (?)" via `--show-ambiguous`.
 - CSV export of per-address readings via `--csv[=PATH]`.
  - Quiet output by default (suppresses INFO-level logs and hides Python tracebacks). Use logs for deep debugging.
- - Interactive device selection if multiple printers are connected.
+ - Picks the printer's USB interface, skipping `/dev/lp?` file devices that have no printer behind them (Linux).
 
 ## Prerequisites
 ### macOS
@@ -80,6 +83,7 @@ Notes:
   SUBSYSTEM=="usb", ATTR{idVendor}=="04b8", MODE="0666"
   ```
   Then reload rules: `sudo udevadm control --reload-rules && sudo udevadm trigger`.
+- Tested with an ET-2850 on openSUSE Tumbleweed (pyusb backend): `status` works, and `reset --auto` reported `RESULT: OK`.
 
  
 
@@ -106,6 +110,8 @@ CSV rows contain: `model,group_label,group_type,addr,value_hex,percent_255,group
 ├── .env/                 # Python virtualenv (auto-created)
 ├── logs/                 # Logs with timestamps
 ├── snapshots/            # EEPROM/state backups
+├── docs/
+│   └── scripts.md        # Reference for status/reset: flow, options, files, limitations
 ├── scripts/
 │   ├── common.sh         # Shared helpers (venv, logging, help dump)
 │   ├── epson_status.sh   # Device detect, status, snapshot
